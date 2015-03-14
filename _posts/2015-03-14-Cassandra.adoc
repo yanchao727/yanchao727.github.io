@@ -1,1 +1,40 @@
-= My title
+= Cassandra研究与配置
+
+Cassandra快速入门：
+Cassandra快速起步：
+https://wiki.apache.org/cassandra/GettingStarted
+Cassandra的Youtube频道和原理入门：
+https://www.youtube.com/channel/UCvP-AXuCr-naAeEccCfKwUA
+https://www.youtube.com/watch?v=220mLX-N_J0
+
+Cassandra安装：
+因为Cassandra是环形架构，没有主从节点之分，所以在每个节点安装Cassandra流程都是一样的。
+详细安装过程可参照一手的Cassandra2.0官方文档，以下是debian系列linux下安装方法：
+http://www.datastax.com/documentation/cassandra/2.0/cassandra/install/installDeb_t.html
+已测试上述链接可行，唯一需要特别注意的是，安装最新版的Cassandra前提是安装Oracle的最新官方java，不要安装OpenJDK的包，安装方法可参照以下链接：
+http://www.wikihow.com/Install-Oracle-Java-on-Ubuntu-Linux
+http://www.wikihow.com/Install-Oracle-Java-JRE-on-Ubuntu-Linux
+
+Cassandra集群配置：
+在每个节点安装完毕Cassandra之后，剩下的工作就是配置一个Cassandra集群。
+Cassandra集群分两种：单数据中心集群和多数据中心集群。
+配置细节也可在一手官方文档找到：
+http://www.datastax.com/documentation/cassandra/2.0/cassandra/initialize/initializeSingleDS.html
+已测试上述链接可行，但是配置是可能会有一些小问题，这里把注意事项列出如下：
+1. 需要特别注意Cassandra配置文件cassandra.yaml的书写，其中"listen_address" 和 "seeds" 字段需要仔细检查。
+“Listen_address”一般为本地节点的IP地址。
+“seeds”要配置两个或两个以上，考虑到高可用性。
+2. 检查节点之间通信顺利，防火墙都关闭，至少Cassandra端口不能禁用。
+3. 如果节点之间通信依然有问题，尝试修改cassandra-env.sh文件，加入如下这行：
+JVM_OPTS=”$JVM_OPTS -Djava.rmi.server.hostname=<public name>”。参考链接：
+http://www.liquidweb.com/kb/error-failed-to-connect-to-127-0-0-17199-connection-refused-cassandra-solved/
+所有配置完毕，可用命令“nodetool status”检查集群状态。
+
+使用Cassandra：
+Cassandra官方的SQL称为CQL（Cassandra Query Language）。只要上述所有配置完毕，即可进入CQL，命令行下输入：
+# cqlsh
+即可进入CQL，进行操作。
+CQL一手官方文档：
+http://www.datastax.com/documentation/cql/3.1/cql/cql_intro_c.html
+当然，如mysql等其他数据库一样，Cassandra有丰富的数据库驱动库：
+https://github.com/datastax
