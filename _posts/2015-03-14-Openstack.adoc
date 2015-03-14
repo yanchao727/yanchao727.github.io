@@ -1,0 +1,40 @@
+= Openstack配置报告
+1. 安装部分
+(1)安装openstack001主机时。3.2版本linux内核不支持Atheros AR8161 Ethernet controller网卡驱动
+需手动安装驱动：
+sudo apt-get install build-essential linux-headers-generic linux-headers-`uname -r`
+wget -O- http://linuxwireless.org/download/compat-wireless-2.6/compat-wireless-2012-07-03-pc.tar.bz2 | tar -xj
+cd compat-wireless-2012-07-03-pc
+./scripts/driver-select alx
+make
+sudo make install
+
+另可参考网址：http://askubuntu.com/questions/165192/how-do-i-install-drivers-for-the-atheros-ar8161-ethernet-controller
+
+
+
+安装完毕两个节点
+1. hostname：openstack001  ip: 72.163.255.69
+    hostname;  openstack002  ip  72.163.255.74
+
+
+
+
+
+
+问题排错：
+ERROR: You must provide a username via either：
+在 /etc/profile里追加 ，之后source /etc/profile
+
+
+export OS_TENANT_NAME=admin
+export OS_USERNAME=admin
+export OS_PASSWORD=1qaz
+export OS_AUTH_URL="http://localhost:5000/v2.0/"
+export EC2_URL=$(keystone catalog --service ec2 | awk '/ publicURL / { print $4 }')
+export CREDS=$(keystone ec2-credentials-create)
+export EC2_ACCESS_KEY=$(echo "$CREDS" | awk '/ access / { print $4 }')
+export EC2_SECRET_KEY=$(echo "$CREDS" | awk '/ secret / { print $4 }')
+
+
+另可参考网址：http://my.oschina.net/liangxiao/blog/145095
