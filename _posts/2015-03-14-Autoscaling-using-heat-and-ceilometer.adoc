@@ -1,0 +1,124 @@
+= Autoscaling using heat and ceilometer
+
+1. Openstack Installation & Configuration 
+(1)  Download devstack
+$ git clone https://github.com/openstack-dev/devstack
+(2) Edit localrc and save
+$ cd ~/devstack && vi localrc
+############################################################################################
+HOST_IP=10.74.104.23
+FLAT_INTERFACE=eth0
+MULTI_HOST=1
+LOGFILE=/opt/stack/logs/stack.sh.log
+VERBOSE=True
+LOG_COLOR=True
+SCREEN_LOGDIR=/opt/stack/logs
+ADMIN_PASSWORD=1qaz
+MYSQL_PASSWORD=1qaz
+RABBIT_PASSWORD=1qaz
+SERVICE_PASSWORD=1qaz
+SERVICE_TOKEN=1qaz
+ENABLED_SERVICES+=,n-novnc,n-xvnc
+Q_PLUGIN=openvswitch
+# Ceilometer - Metering Service (metering + alarming)
+# Enable the ceilometer metering services
+enable_service ceilometer-acompute,ceilometer-acentral,ceilometer-collector
+enable_service ceilometer-alarm-evaluator,ceilometer-alarm-notifier
+enable_service ceilometer-api
+ENABLED_SERVICES+=,heat,h-api,h-api-cfn,h-api-cw,h-eng
+IMAGE_URLS+=",http://fedorapeople.org/groups/heat/prebuilt-jeos-images/F17-x86_64-cfntools.qcow2,http://fedorapeople.org/groups/heat/prebuilt-jeos-images/F17-i386-cfntools.qcow2"
+IMAGE_URLS+=",https://launchpad.net/cirros/trunk/0.3.0/+download/cirros-0.3.0-x86_64-disk.img"
+EXTRA_OPTS=(notification_driver=nova.openstack.common.notifier.rabbit_notifier,Ceilometer.compute.nova_notifier)
+############################################################################################
+(3) Installation and configuration openstack
+$ ./stack.sh 
+Once the openstack is all configured and running, we can find all the logs in directory: /opt/stack/logs
+2. Launch a stack of autoscaling using heat and ceilometer
+Before going through the following steps. I highly recommend a demo video here:
+http://os.enocloud.com:8080/v1/AUTH_7ca40665769a4a18a5edd2676655a89a/public/demo-autoscaling.ogv
+(1) Generating key pair
+Go to horizon “Access & Security”, generate your own key pair. Save the private key to your local PC. We will use it to ssh to any vm using this key pair.
+
+(2) Upload template to the heat
+We use AutoScalingCeilometer_modified.yaml as follow:
+https://www.evernote.com/shard/s12/sh/c3ea30d1-f1d6-45e0-8fe6-5f24807a74df/d0e22ae6ae7bf9d94391ffee24346630
+Upload the file to heat and launch a stack:
+
+Hopefully, we will get a new stack on the list whose status is “Creat Complete”:
+
+And, each resources needed is “created complete” or “update complete”:
+
+
+(3) Comfirm two vms automatically boot
+Autoscaling using heat and ceilometer counts on HAProxy. 
+So once the stack is complete, there are two vms automatically started, one is HAProxy server(the loadbalancer), the other is the server where your app is running, waiting for autoscaling. 
+
+(4) Test scaling up and down wrt. cpu-util
+Now you can ssh to your app server vm and manually turns up its cpu.
+$ ssh -o "StrictHostKeyChecking no"  -i  private_key  root@vm_ip
+$ dd if=/dev/urandom of=/dev/null &
+You can do “top”, to comfirm cpu-util is above 50%.
+After one minute or so, heat will take an action for cpu alarm, and automatically start a new vm of the ServerGroup(in below is 10.0.0.11):
+
+3. TroubleShooting & bugs fixing
+(1)  Why does heat took so long to act an alarm?
+It takes time if you use the default sample frequency of 10mins(600s) with ceilometer. If you are wondering why does heat scale up so slowly, take a look at ceilometer evaluation process:
+
+We must wait until the sample data all ready to evaluate, right? (step1-5)
+So if you want to turn up sample frequency, edit file /etc/ceilometer/pipeline.yaml, and set the interval of sampling smaller than 600s:
+ 
+(2)  Why can’t I get ceilometer UI in horizon?
+
+If you can’t get UI in horizon like above, you should check that all the neccessary ceilometer processes are running like below:
+
+
+(3)  Horizon will not authenticate against keystone v3
+The bug is fixed here:
+https://bugs.launchpad.net/horizon/+bug/1267636
+Yet, this is not enough, you should modify some codes here:
+$ vi /opt/stack/keystone/keystone/contrib/ec2/controllers.py
+###############################################################################
+def _convert_v3_to_ec2_credential(self, credential):
+        blob = credential['blob']
+++++if type(blob) == unicode:
+++++   blob = eval(blob)
+        return {'user_id': credential.get('user_id'),
+                'tenant_id': credential.get('project_id'),
+                'access': blob.get('access'),
+                'secret': blob.get('secret'),
+                'trust_id': blob.get('trust_id')}
+###############################################################################
+
+(4)  Why am I keep using F20 as loadbalancer ?
+If you want to change the image you use while loadbalancing, watch this source code:
+$ vi /opt/stack/heat/heat/engine/resources/loadbalancer.py
+In this file, we can hard code the image you use while loadbalancing.(You can use F17、F18、F20 or the image you made yourself)
+
+(5)  How to comfirm heat sets a stack successfully?
+We run the command below:
+$ heat list
+$ heat resource-list heat_id
+
+If you can see status is all “create_complete” or “update_complete”, we can comfirm that heat sets a stack successfully
+
+(6)  How to comfirm ceilometer is sampling OK ?
+We can use commands below to comfirm ceilometer is sampling OK and ceilometer alarm can evaluate good.
+$ ceilometer sample-list -m cpu –q \ "metadata.user_metadata.groupname=autoscaleceilo002-WebServerGroup-pv45huinwot5"
+$ ceilometer alarm-list
+If ceilometer is sampling OK, the “State” here should be “alarm” or “ok” instead of “insufficient data”.
+
+(7) Where can I find standard fedora image for heat?
+Heat cfn prebuilt images link：
+http://fedorapeople.org/groups/heat/prebuilt-jeos-images/
+
+References
+1. Autoscaling with Heat and Ceilometer http://techs.enovance.com/5991/autoscaling-with-heat-and-ceilometer
+2. Ceilometer Quickstart  http://openstack.redhat.com/CeilometerQuickStart
+3. OpenStack Metering Using Ceilometer http://www.mirantis.com/blog/openstack-metering-using-ceilometer/
+4. Ceilometer Developer Documentation
+5. Ceilometer: Choosing database backend
+6. Blueprint: Move to Ceilometer as Heat CloudWatch metric/alarm back-end
+7. Ceilometer and Healthmon integration
+8. Ceilometer Graduation
+9. OpenStack Ceilometer Documentation: Measurements
+10. Ceilometer blueprints approved for Havana release
